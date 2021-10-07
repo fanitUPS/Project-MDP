@@ -1,4 +1,4 @@
-import UT
+import conculations_powerflow as cp
 import pandas as pd
 import win32com.client
 rastr = win32com.client.Dispatch('Astra.Rastr')
@@ -18,12 +18,12 @@ p_nk = 30
 
 # Расчет МДП по Обеспечению 20% запаса статической апериодической
 # устойчивости в КС в нормальной схеме.
-p_mdp1 = round(abs(UT.utyazhelenie(vector_ut, path_regime,
+p_mdp1 = round(abs(cp.utyazhelenie(vector_ut, path_regime,
                path_sech, sech)) * (1 - 0.2) - p_nk, 2)
 
 # Расчет МДП по Обеспечению 15% коэффициента запаса статической
 # устойчивости по напряжению в узлах нагрузки в нормальной схеме.
-p_mdp2 = round(abs(UT.utyazhelenie_u(
+p_mdp2 = round(abs(cp.utyazhelenie_u(
                vector_ut, path_regime, 1.15, 0)) - p_nk, 2)
 
 # Расчет МДП по Обеспечению 8% запаса статической апериодической
@@ -31,17 +31,17 @@ p_mdp2 = round(abs(UT.utyazhelenie_u(
 # Заданные возмущения
 faults = pd.read_json('faults.json')
 # Считаем переток, соответствующий 8% запасу
-p_mdp3 = UT.alert_state(faults, path_regime, vector_ut, path_sech, sech)
+p_mdp3 = cp.alert_state(faults, path_regime, vector_ut, path_sech, sech)
 
 # Расчет МДП по обеспечению 10% запаса по U в ПАВ
-p_mdp4 = UT.voltage_alert_state(faults, path_regime, vector_ut, 1.1)
+p_mdp4 = cp.voltage_alert_state(faults, path_regime, vector_ut, 1.1)
 
 # Расчет МДП по ДДТН
-p_mdp5_1 = round(abs(UT.utyazhelenie_i(
+p_mdp5_1 = round(abs(cp.utyazhelenie_i(
     vector_ut, path_regime, 'zag_i', 0)) - p_nk, 2)
 
 # Расчет МДП по АДТН
-p_mdp5_2 = UT.current_alert_state(faults, path_regime, vector_ut, 'zag_i_av')
+p_mdp5_2 = cp.current_alert_state(faults, path_regime, vector_ut, 'zag_i_av')
 
 result = {
     'Критерий определения перетока': [
