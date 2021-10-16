@@ -8,7 +8,7 @@ path_regime = 'C:/Users/Fanit/Documents/RastrWin3/SHABLON/режим.rg2'
 path_sech = 'C:/Users/Fanit/Documents/RastrWin3/SHABLON/сечения.sch'
 
 # Считываем заданный файл, в котором перечисленны элементы сечения
-sech = pd.read_json('flowgate.json')
+sech = pd.read_json('flowgate.json', ).T
 
 # Формирование траектории утяжеления
 vector_ut = pd.read_csv('vector.csv')
@@ -30,7 +30,7 @@ for node in vector_ut['node']:
 # Расчет МДП по Обеспечению 20% запаса статической апериодической
 # устойчивости в КС в нормальной схеме.
 p_mdp1 = round(abs(cp.utyazhelenie(vector_ut, path_regime,
-               path_sech, sech, indexes)) * (1 - 0.2) - p_nk, 2)
+               path_sech, sech, 0, indexes)) * (1 - 0.2) - p_nk, 2)
 
 # Расчет МДП по Обеспечению 15% коэффициента запаса статической
 # устойчивости по напряжению в узлах нагрузки в нормальной схеме.
@@ -40,7 +40,7 @@ p_mdp2 = round(abs(cp.utyazhelenie_u(
 # Расчет МДП по Обеспечению 8% запаса статической апериодической
 # устойчивости в КС в ПАВ.
 # Заданные возмущения
-faults = pd.read_json('faults.json')
+faults = pd.read_json('faults.json').T
 # Считаем переток, соответствующий 8% запасу
 p_mdp3 = cp.alert_state(faults, path_regime,
                         vector_ut, path_sech, sech, indexes)

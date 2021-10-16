@@ -14,7 +14,7 @@ def prirost_uzl(vector, indexes):
         changed regime.
     """
 
-    # Выделение генераторных узлов
+    # Водсчет количества узлов
     count_vector = vector.shape[0]
 
     rastr_cols = {
@@ -28,71 +28,46 @@ def prirost_uzl(vector, indexes):
     # мощности
     for i in range(count_vector):
         if vector['variable'][i] == 'pg':
+            # к текущей генерации узла прибавляем значение из траектории
+            # g_in_n = Generation_in_node
+            g_in_n = rastr_cols['pg'].Z(indexes[vector['node'][i]])
+            change = vector['value'][i]
+            rastr_cols['pg'].SetZ(indexes[vector['node'][i]],
+                                  g_in_n + change)
+
+        elif vector['variable'][i] == 'pn':
+
+            # к текущей генерации узла прибавляем значение из траектории
+            # l_in_n = load_in_node
+            l_in_n = rastr_cols['pn'].Z(indexes[vector['node'][i]])
+            change = vector['value'][i]
+
             if vector['tg'][i] == 0:
-                # к текущей генерации узла прибавляем значение из траектории
-                # g_in_n = Generation_in_node
-                g_in_n = rastr_cols['pg'].Z(indexes[vector['node'][i]])
-                change = vector['value'][i]
-                rastr_cols['pg'].SetZ(indexes[vector['node'][i]],
-                                      g_in_n + change)
 
-            elif (vector['tg'][i] != 0 and
-                  rastr_cols['qg'].Z(indexes[vector['node'][i]]) != 0):
-                # считаем тангенс
-                old_tg_gen = (rastr_cols['pg'].Z(indexes[vector['node'][i]]) /
-                              rastr_cols['qg'].Z(indexes[vector['node'][i]]))
-
-                g_in_n = rastr_cols['pg'].Z(indexes[vector['node'][i]])
-                change = vector['value'][i]
-                rastr_cols['pg'].SetZ(indexes[vector['node'][i]],
-                                      g_in_n + change)
-
-                actual_gen = rastr_cols['pg'].Z(indexes[vector['node'][i]])
-                rastr_cols['qg'].SetZ(indexes[vector['node'][i]],
-                                      (actual_gen / old_tg_gen))
-
-            elif (vector['tg'][i] != 0 and
-                  rastr_cols['qg'].Z(indexes[vector['node'][i]]) == 0):
-
-                g_in_n = rastr_cols['pg'].Z(indexes[vector['node'][i]])
-                change = vector['value'][i]
-                rastr_cols['pg'].SetZ(indexes[vector['node'][i]],
-                                      g_in_n + change)
-
-        if vector['variable'][i] == 'pn':
-            if vector['tg'][i] == 0:
-                # к текущей генерации узла прибавляем значение из траектории
-                # l_in_n == load_in_node
-                l_in_n = rastr_cols['pn'].Z(indexes[vector['node'][i]])
-                change = vector['value'][i]
                 rastr_cols['pn'].SetZ(indexes[vector['node'][i]],
                                       l_in_n + change)
 
-            elif (vector['tg'][i] != 0 and
-                  rastr_cols['qn'].Z(indexes[vector['node'][i]]) != 0):
-                # считаем тангенс
-                old_tg_load = (rastr_cols['pn'].Z(indexes[vector['node'][i]]) /
-                               rastr_cols['qn'].Z(indexes[vector['node'][i]]))
+            else:
 
-                l_in_n = rastr_cols['pn'].Z(indexes[vector['node'][i]])
-                change = vector['value'][i]
-                rastr_cols['pn'].SetZ(indexes[vector['node'][i]],
-                                      l_in_n + change)
+                if rastr_cols['qn'].Z(indexes[vector['node'][i]]) != 0:
+                    # считаем тангенс
+                    old_tg = (rastr_cols['pn'].Z(indexes[vector['node'][i]]) /
+                              rastr_cols['qn'].Z(indexes[vector['node'][i]]))
 
-                actual_load = rastr_cols['pn'].Z(indexes[vector['node'][i]])
-                rastr_cols['qn'].SetZ(indexes[vector['node'][i]],
-                                      (actual_load / old_tg_load))
+                    rastr_cols['pn'].SetZ(indexes[vector['node'][i]],
+                                          l_in_n + change)
 
-            elif (vector['tg'][i] != 0 and
-                  rastr_cols['qn'].Z(indexes[vector['node'][i]]) == 0):
-                l_in_n = rastr_cols['pn'].Z(indexes[vector['node'][i]])
-                change = vector['value'][i]
-                rastr_cols['pn'].SetZ(indexes[vector['node'][i]],
-                                      l_in_n + change)
+                    act_load = rastr_cols['pn'].Z(indexes[vector['node'][i]])
+                    rastr_cols['qn'].SetZ(indexes[vector['node'][i]],
+                                          (act_load / old_tg))
+
+                else:
+                    rastr_cols['pn'].SetZ(indexes[vector['node'][i]],
+                                          l_in_n + change)
 
 
 # Функция утяжеления, расчитывающая предел по статической устойчивости
-def utyazhelenie(vector, path_regime, path_sech, sech, indexes):
+def utyazhelenie(vector, path_regime, path_sech, sech, off, indexes):
     """Function changes regime until reaches limit of steady state stability
 
     Args:
@@ -100,13 +75,15 @@ def utyazhelenie(vector, path_regime, path_sech, sech, indexes):
         path_regime (str): path to shablon .rg2.
         path_sech (str): path to shablon .sch.
         sech (pandas dataframe): include flowgate.
+        off (int): 0 if normal mode, 1 if alert state.
         indexes(dict): indexes of nodes.
     Return:
         float: limit power flow.
     """
-    # Загрузка файлов в Rastr
-    rastr.Load(1, 'regime.rg2', path_regime)
-    result = rastr.rgm('p')
+    if off == 0:
+        # Загрузка файлов в Rastr
+        rastr.Load(1, 'regime.rg2', path_regime)
+        result = rastr.rgm('p')
 
     # Добавление нового сечения
     # Создаем файл сечения
@@ -119,13 +96,11 @@ def utyazhelenie(vector, path_regime, path_sech, sech, indexes):
     rastr.Tables('sechen').Cols('ns').SetZ(0, 333)
 
     # Вносим в сечение заданные ЛЭП
-    i = 0
-    for null, contents in sech.items():
+    for index, (_, line_params) in enumerate(sech.iterrows()):
         rastr.Tables('grline').AddRow()
-        rastr.Tables('grline').Cols('ns').SetZ(i, 333)
-        rastr.Tables('grline').Cols('ip').SetZ(i, contents[0])
-        rastr.Tables('grline').Cols('iq').SetZ(i, contents[1])
-        i = i + 1
+        rastr.Tables('grline').Cols('ns').SetZ(index, 333)
+        rastr.Tables('grline').Cols('ip').SetZ(index, line_params[0])
+        rastr.Tables('grline').Cols('iq').SetZ(index, line_params[1])
     # Утяжеление
     result = rastr.rgm('p')
     # В данном случае используется изменение генерации и потребления в таблице
@@ -161,33 +136,31 @@ def utyazhelenie_u(vector, path_regime, koeff, off, indexes):
         result = rastr.rgm('p')
     # Нахождение Минимальных напряжений
     count_node = rastr.Tables('node').Size
-    node_min_voltage = []
     for node in range(count_node):
         actual_voltage = rastr.Tables('node').Cols('vras').Z(node)
         critical_voltage = rastr.Tables('node').Cols('uhom').Z(node) * 0.7
         voltage_margin = critical_voltage * koeff
         if actual_voltage < voltage_margin:
-            node_min_voltage.append(rastr.Tables('node').Cols('ny').Z(node))
-    if len(node_min_voltage) != 0:
-        print('Недопустимые напряжения в узлах')
-        raise SystemExit
+            print('Недопустимые напряжения в узлах')
+            raise SystemExit
+
     # Утяжеление
 
     result = rastr.rgm('p')
 
-    while result == 0 and len(node_min_voltage) == 0:
+    while result == 0:
         prirost_uzl(vector, indexes)
         result = rastr.rgm('p')
         # Проверка узлов на отклонение напряжения
-        count_node = rastr.Tables('node').Size
-        node_min_voltage = []
         for node in range(count_node):
             actual_voltage = rastr.Tables('node').Cols('vras').Z(node)
             critical_voltage = rastr.Tables('node').Cols('uhom').Z(node) * 0.7
             voltage_margin = critical_voltage * koeff
-            ny = rastr.Tables('node').Cols('ny')
             if actual_voltage < voltage_margin:
-                node_min_voltage.append(ny.Z(node))
+                break
+        else:
+            continue
+        break
     p_predel_u = round(rastr.Tables('sechen').Cols('psech').Z(0), 2)
     return p_predel_u
 
@@ -206,14 +179,12 @@ def utyazhelenie_i(vector, path_regime, current_control, off, indexes):
     Return:
         float: limit power flow.
     """
-
-    tok_max = []
+    result = rastr.rgm('p')
     if off == 0:
         # Загрузка файлов в Rastr
         rastr.Load(1, 'regime.rg2', path_regime)
         result = rastr.rgm('p')
-    result = rastr.rgm('p')
-    while result == 0 and len(tok_max) == 0:
+    while result == 0:
         prirost_uzl(vector, indexes)
         result = rastr.rgm('p')
         # Проверка ветвей на токовую нагрузку
@@ -222,7 +193,10 @@ def utyazhelenie_i(vector, path_regime, current_control, off, indexes):
         for actual_branch in range(count_vetv):
             actual_current = branch.Cols(current_control).Z(actual_branch)
             if actual_current * 1000 >= 100:
-                tok_max.append(branch.Cols(current_control).Z(actual_branch))
+                break
+        else:
+            continue
+        break
     p_predel_i = round(rastr.Tables('sechen').Cols('psech').Z(0), 2)
     return p_predel_i
 
@@ -252,10 +226,9 @@ def outage(path_regime, faults, z):
         np = rastr.Tables('vetv').Cols('np').Z(vetv)
         if (ip == faults['ip'][z] and iq == faults['iq'][z] and
                 np == faults['np'][z]):
-            rastr.Tables('vetv').Cols('sta').SetZ(vetv, 1)
+            rastr.Tables('vetv').Cols('sta').SetZ(vetv, faults['sta'][z])
             off_vetv = vetv
             rastr.rgm('p')
-    rastr.rgm('p')
     return off_vetv
 
 
@@ -274,9 +247,7 @@ def alert_state(faults, path_regime, vector, path_sech, sech, indexes):
         float: limit power flow.
     """
     # Заданные возмущения
-    faults = faults.T
-    faults_shape = faults.shape
-    count_faults = faults_shape[0]
+    count_faults = faults.shape[0]
     # Утяжеление
     mdp_alert_state = pd.DataFrame(columns=['MDP'])
 
@@ -285,19 +256,23 @@ def alert_state(faults, path_regime, vector, path_sech, sech, indexes):
     for num_faults in range(count_faults):
         off_vetv = outage(path_regime, faults, num_faults)
         # Находим переток соответствующий 8% запасу
+        # Параметр, указывающий расчет ПАР
+        off = 1
         power_alert_state = abs(
-            utyazhelenie_light(
+            utyazhelenie(
                 vector,
+                path_regime,
                 path_sech,
                 sech,
+                off,
                 indexes) * 0.92)
         actual_power = 0
 
         # Заново загружаем режим
         rastr.Load(1, 'regime.rg2', path_regime)
-        rastr.rgm('p')
         # отключаем ЛЭП снова
-        rastr.Tables('vetv').Cols('sta').SetZ(off_vetv, 1)
+        rastr.Tables('vetv').Cols('sta').SetZ(off_vetv,
+                                              faults['sta'][num_faults])
         rastr.rgm('p')
 
         # Выставляем в сечении переток, соответствующий 8% запасу
@@ -308,8 +283,8 @@ def alert_state(faults, path_regime, vector, path_sech, sech, indexes):
             actual_power = abs(round(power_flowgate.Z(0), 2))
 
         # Включаем отключенную ветвь
-        rastr.rgm('p')
-        rastr.Tables('vetv').Cols('sta').SetZ(off_vetv, 0)
+        branch_state = abs(faults['sta'][num_faults] - 1)
+        rastr.Tables('vetv').Cols('sta').SetZ(off_vetv, branch_state)
         rastr.rgm('p')
         # Расчитываем МДП и записываем в датафрейм
         mdp_alert_state.loc[num_faults] = [
@@ -320,52 +295,7 @@ def alert_state(faults, path_regime, vector, path_sech, sech, indexes):
     return power_mdp3
 
 
-# Функция утяжеления не загружаящая шаблон, необходим для расчета 3 критерия
-def utyazhelenie_light(vector, path_sech, sech, indexes):
-    """Function changes regime until reaches limit of steady state stability
-
-    Args:
-        vector (pandas dataframe): include changing nodes.
-        path_regime (str): path to shablon .rg2.
-        path_sech (str): path to shablon .sch.
-        sech (pandas dataframe): include flowgate.
-        indexes(dict): indexes of nodes.
-    Return:
-        float: limit power flow.
-    """
-    # Добавление нового сечения
-    # Создаем файл сечения
-    rastr.Save('regime.sch', path_sech)
-
-    # Загружаем созданный файл в Растр
-    rastr.Load(1, 'regime.sch', path_sech)
-    rastr.Tables('sechen').AddRow()
-    # Создаем сечение с названием 333
-    rastr.Tables('sechen').Cols('ns').SetZ(0, 333)
-
-    # Вносим в сечение заданные ЛЭП
-    i = 0
-    for label, contents in sech.items():
-        rastr.Tables('grline').AddRow()
-        rastr.Tables('grline').Cols('ns').SetZ(i, 333)
-        rastr.Tables('grline').Cols('ip').SetZ(i, contents[0])
-        rastr.Tables('grline').Cols('iq').SetZ(i, contents[1])
-        i = i + 1
-
-    # Утяжеление
-    result = rastr.rgm('p')
-    # В данном случае используется изменение генерации и потребления в таблице
-    # Узлы
-    while result == 0:
-        prirost_uzl(vector, indexes)
-        # Расчет УР
-        result = rastr.rgm('p')
-    p_predel = round(rastr.Tables('sechen').Cols('psech').Z(0), 2)
-    return p_predel
-
 # Функция считающая ПАВ по напряжению
-
-
 def voltage_alert_state(faults, path_regime, vector, koeff, indexes):
     """Function changes regime until reaches limit of steady state stability
     by voltage in nodes in alert state
@@ -380,11 +310,10 @@ def voltage_alert_state(faults, path_regime, vector, koeff, indexes):
         float: limit power flow.
     """
     # Заданные возмущения
-    faults = faults.T
-    faults_shape = faults.shape
-    count_faults = faults_shape[0]
+    count_faults = faults.shape[0]
     # Утяжеление
     mdp_voltage_alert_state = pd.DataFrame(columns=['MDP'])
+    # Параметр, указывающий расчет ПАР
     off = 1
     # Цикл, делающий перебор и расчет режимов для каждого возмущения в
     # заданном списке
@@ -394,8 +323,8 @@ def voltage_alert_state(faults, path_regime, vector, koeff, indexes):
         utyazhelenie_u(vector, path_regime, koeff, off, indexes)
 
         # Включаем отключенную ветвь
-        rastr.rgm('p')
-        rastr.Tables('vetv').Cols('sta').SetZ(off_vetv, 0)
+        branch_state = abs(faults['sta'][num_faults] - 1)
+        rastr.Tables('vetv').Cols('sta').SetZ(off_vetv, branch_state)
         rastr.rgm('p')
         # Расчитываем МДП и записываем в датафрейм
         mdp_voltage_alert_state.loc[num_faults] = [
@@ -421,23 +350,21 @@ def current_alert_state(faults, path_regime, vector, current_control, indexes):
         float: limit power flow.
     """
     # Заданные возмущения
-    faults = faults.T
-    faults_shape = faults.shape
-    count_faults = faults_shape[0]
+    count_faults = faults.shape[0]
     # Утяжеление
     mdp_current_alert_state = pd.DataFrame(columns=['MDP'])
-
+    # Параметр, указывающий расчет ПАР
+    off = 1
     # Цикл, делающий перебор и расчет режимов для каждого возмущения в
     # заданном списке
     for z in range(count_faults):
-        off = 1
         off_vetv = outage(path_regime, faults, z)
         # Находим предел по АДТН
         (utyazhelenie_i(vector, path_regime, current_control, off, indexes))
 
         # Включаем отключенную ветвь
-        rastr.rgm('p')
-        rastr.Tables('vetv').Cols('sta').SetZ(off_vetv, 0)
+        branch_state = abs(faults['sta'][z] - 1)
+        rastr.Tables('vetv').Cols('sta').SetZ(off_vetv, branch_state)
         rastr.rgm('p')
         # Расчитываем МДП и записываем в датафрейм
         mdp_current_alert_state.loc[z] = [
